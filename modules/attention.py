@@ -31,11 +31,35 @@ class CausalSelfAttention(nn.Module):
     proj = rearrange(proj, 'b t h d -> b h t d')
     return proj
 
+  #NOTE: We implemented this
   def attention(self, key, query, value, attention_mask):
+    """
+    Calculates the multi head attention for the given key, query, value and attention mask.
 
-    ### YOUR CODE HERE
-    raise NotImplementedError
+    Args:
+      key (torch.Tensor): [bs, num_attention_heads, seq_len, attention_head_size]
+      query (torch.Tensor): [bs, num_attention_heads, seq_len, attention_head_size]
+      value (torch.Tensor): [bs, num_attention_heads, seq_len, attention_head_size]
+      attention_mask (torch.Tensor): [bs, 1, 1, seq_len] mask which distinguishes between padded and non-padded tokens.
 
+    Returns:
+      attn_value (torch.Tensor): [bs, seq_len, hidden_state], the output of multi-head attention.
+    """
+    attn_scores = torch.matmul(query, key.transpose(-1, -2))# [bs, num_attention_heads, seq_len, seq_len]
+    attn_scores = attn_scores / (self.attention_head_size ** 0.5)
+    # apply the padding mask
+    attn_scores = attn_scores + attention_mask
+    # apply upper triangular causal mask (so that each token can only read previous tokens and itself).
+    seq_length = attn_scores.size(-1)
+    causal_mask = torch.triu(torch.ones((seq_length, seq_length), device=attn_scores.device), diagonal=1).bool()
+    attn_scores = attn_scores.masked_fill_(causal_mask, float('-inf'))
+    # get probabilities
+    probs = torch.softmax(attn_scores, dim=-1)
+    probs = self.dropout(probs) # apply dropout to the attention probabilities
+    attn_value = torch.matmul(probs, value) # [bs, num_attention_heads, seq_len, attention_head_size]
+    # recombine
+    attn_value = rearrange(attn_value, 'b h t d -> b t (h d)')
+    return attn_value
 
   def forward(self, hidden_states, attention_mask):
     """
