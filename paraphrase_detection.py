@@ -58,21 +58,12 @@ class ParaphraseGPT(nn.Module):
       param.requires_grad = True
 
   def forward(self, input_ids, attention_mask):
-    """
-    TODO: Predict the label of the token using the paraphrase_detection_head Linear layer.
+    
+    outputs = self.gpt(input_ids, attention_mask)
+    last_token = outputs["last_token"]
+    logits = self.gpt.hidden_state_to_token(last_token)
 
-    We structure the input as:
-
-      'Is "{s1}" a paraphrase of "{s2}"? Answer "yes" or "no": '
-
-    So you want to find the prediction for the next token at the end of this sentence. Optimistically, it will be the
-    token "yes" (byte pair encoding index of 8505) for examples that are paraphrases or "no" (byte pair encoding index
-     of 3919) for examples that are not paraphrases.
-    """
-
-    'Takes a batch of sentences and produces embeddings for them.'
-    ### YOUR CODE HERE
-    raise NotImplementedError
+    return logits
 
 
 
