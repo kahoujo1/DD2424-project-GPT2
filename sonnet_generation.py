@@ -55,13 +55,10 @@ class SonnetGPT(nn.Module):
       param.requires_grad = True
 
   def forward(self, input_ids, attention_mask):
-    """
-    This is similar to the forward for ParaphraseGPT, but we now want to produce a logit for each token in our sequence;
-    not just the last token! This will allow our model to learn the natural language distribution that composes sonnets,
-    not just the distribution over next tokens for the last token!
-    """
-    ### YOUR CODE HERE
-    raise NotImplementedError
+    outputs = self.gpt(input_ids, attention_mask)
+    hidden_states = outputs["last_hidden_state"]
+    logits = self.gpt.hidden_state_to_token(hidden_states)
+    return logits
 
 
   def get_device(self):
