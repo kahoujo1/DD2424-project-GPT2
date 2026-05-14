@@ -79,7 +79,7 @@ class GPT2Layer(nn.Module):
     # 2. multi-head attention
     attn_output = self.self_attention(normed_hidden_states, attention_mask)
     # 3. skip connection and dropout
-    attn_output = self.add(hidden_states, attn_output, self.attention_dense, self.attention_dropout)
+    attn_output = self.add(hidden_states, attn_output, self.attention_dense, self.attention_dropout) # W_o
     # 4. layer norm
     normed_attn_output = self.out_layer_norm(attn_output)
     # 5. final feed forward layer
