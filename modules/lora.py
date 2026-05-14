@@ -9,6 +9,9 @@ from torch import nn
 
 from models.gpt2 import GPT2Model
 
+
+VALID_TARGET_MODULES = ['query', 'key', 'value', 'dense']
+
 class LoRALinear(nn.Linear):
     """
     LoRA linear layer that adds low-rank adaptation to a standard linear layer.
@@ -63,10 +66,19 @@ def exchange_model_layers(model: GPT2Model, r = 4, alpha = 1.0, target_modules =
     Returns:
         GPT2Model: The modified GPT2Model with LoRA linear layers.
     """
+    # firstly, freeze all original parameters
+    for param in model.parameters():
+        param.requires_grad = False
+    # check if the target modules are valid
+    if not all(target in VALID_TARGET_MODULES for target in target_modules):
+        raise ValueError(f"Invalid target modules. Valid options are: {VALID_TARGET_MODULES}")
     for i in range(len(model.gpt_layers)):
         gpt_layer = model.gpt_layers[i]
         for target in target_modules:
-            linear_layer = getattr(gpt_layer.self_attention, target)
+            if target == 'dense': # the W_o layer after attention
+                linear_layer = gpt_layer.attention_dense
+            else: # the query, key, value layers in the attention module    
+                linear_layer = getattr(gpt_layer.self_attention, target)
             in_features = linear_layer.in_features
             out_features = linear_layer.out_features
             lora_linear = LoRALinear(in_features, out_features, r, alpha)
@@ -78,7 +90,10 @@ def exchange_model_layers(model: GPT2Model, r = 4, alpha = 1.0, target_modules =
                 lora_linear.weight.copy_(linear_layer.weight)
                 if linear_layer.bias is not None:
                     lora_linear.bias.copy_(linear_layer.bias)
-            setattr(gpt_layer.self_attention, target, lora_linear)
+            if target == 'dense':
+                gpt_layer.attention_dense = lora_linear
+            else:
+                setattr(gpt_layer.self_attention, target, lora_linear)
 
     # Quick sanity check for trainable parameters
     trainable_params = 0
@@ -96,3 +111,28 @@ def exchange_model_layers(model: GPT2Model, r = 4, alpha = 1.0, target_modules =
     )
     return model
             
+def save_lora_weights(model: GPT2Model, filepath: str):
+    """
+    Saves the LoRA weights of the modified GPT2Model.
+
+    Args:
+        model (GPT2Model): The modified GPT2Model with LoRA linear layers.
+        filepath (str): The path to save the LoRA weights.
+    """
+    lora_state_dict = {
+        name: param.data for name, param in model.named_parameters() if param.requires_grad
+    }
+    torch.save(lora_state_dict, filepath)
+    print(f"LoRA weights saved to {filepath}")
+
+def load_lora_weights(model: GPT2Model, filepath: str):
+    """
+    Loads the LoRA weights into the modified GPT2Model.
+
+    Args:
+        model (GPT2Model): The modified GPT2Model with LoRA linear layers.
+        filepath (str): The path to load the LoRA weights from.
+    """
+    lora_state_dict = torch.load(filepath)
+    model.load_state_dict(lora_state_dict, strict=False) # strict=False to allow loading only the LoRA weights
+    print(f"LoRA weights loaded from {filepath}")
