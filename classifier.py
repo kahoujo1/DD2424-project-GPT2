@@ -311,7 +311,7 @@ def train(args):
 def test(args):
   with torch.no_grad():
     device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
-    saved = torch.load(args.filepath)
+    saved = torch.load(args.filepath, weights_only=False)
     config = saved['model_config']
     model = GPT2SentimentClassifier(config)
     model.load_state_dict(saved['model'])
@@ -395,7 +395,7 @@ if __name__ == "__main__":
     lr=args.lr,
     use_gpu=args.use_gpu,
     epochs=args.epochs,
-    batch_size=8,
+    batch_size=args.batch_size,
     hidden_dropout_prob=args.hidden_dropout_prob,
     train='data/ids-cfimdb-train.csv',
     dev='data/ids-cfimdb-dev.csv',
