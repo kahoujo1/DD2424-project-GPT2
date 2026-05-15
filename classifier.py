@@ -58,7 +58,7 @@ class GPT2SentimentClassifier(torch.nn.Module):
     self.classifier = torch.nn.Linear(config.hidden_size, config.num_labels)
     if config.fine_tune_mode == 'lora':
       assert config.target_modules is not None and isinstance(config.target_modules, list), "target_modules must be a list of strings for lora fine-tuning"
-      self.gpt = exchange_model_layers(self.gpt, r=4, alpha=1.0, target_modules=config.target_modules)
+      self.gpt = exchange_model_layers(self.gpt, r=config.lora_r, alpha=config.lora_alpha, target_modules=config.target_modules)
 
   def forward(self, input_ids, attention_mask):
     '''Takes a batch of sentences and returns logits for sentiment classes'''
@@ -271,7 +271,9 @@ def train(args):
             'hidden_size': 768,
             'data_dir': '.',
             'fine_tune_mode': args.fine_tune_mode,
-            'target_modules': args.target_modules
+            'target_modules': args.target_modules,
+            'lora_r': args.lora_r,
+            'lora_alpha': args.lora_alpha
             }
 
   config = SimpleNamespace(**config)
@@ -365,7 +367,9 @@ def get_args():
                       choices=('last-linear-layer', 'full-model', 'lora'), default="last-linear-layer")
   parser.add_argument("--use_gpu", action='store_true')
   parser.add_argument("--target-modules", nargs='+', help="list of target modules for lora fine-tuning, e.g., --target-modules query key value dense"
-                      , default=None)
+                      ,choices=('query', 'key', 'value', 'dense'), default=None)
+  parser.add_argument("--lora_r", type=int, default=4, help="the rank of the low-rank decomposition in LoRA")
+  parser.add_argument("--lora_alpha", type=float, default=1.0, help="the scaling factor alpha for LoRA")
   parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
   parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
   parser.add_argument("--lr", type=float, help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 1e-5",
@@ -392,6 +396,8 @@ if __name__ == "__main__":
     test='data/ids-sst-test-student.csv',
     fine_tune_mode=args.fine_tune_mode,
     target_modules=args.target_modules,
+    lora_r=args.lora_r,
+    lora_alpha=args.lora_alpha,
     dev_out='predictions/' + args.fine_tune_mode + '-sst-dev-out.csv',
     test_out='predictions/' + args.fine_tune_mode + '-sst-test-out.csv'
   )
