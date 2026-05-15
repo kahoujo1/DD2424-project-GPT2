@@ -14,6 +14,7 @@ from torch.utils.data import Dataset, DataLoader
 from transformers import GPT2Tokenizer
 from sklearn.metrics import f1_score, accuracy_score
 
+from modules.lora import LoRALinear, exchange_model_layers
 from models.gpt2 import GPT2Model
 from optimizer import AdamW
 from tqdm import tqdm
@@ -46,17 +47,18 @@ class GPT2SentimentClassifier(torch.nn.Module):
     self.gpt = GPT2Model.from_pretrained()
 
     # Pretrain mode does not require updating GPT paramters.
-    assert config.fine_tune_mode in ["last-linear-layer", "full-model"]
+    assert config.fine_tune_mode in ["last-linear-layer", "full-model", "lora"]
     for param in self.gpt.parameters():
       if config.fine_tune_mode == 'last-linear-layer':
         param.requires_grad = False
       elif config.fine_tune_mode == 'full-model':
         param.requires_grad = True
-        
+
     self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
     self.classifier = torch.nn.Linear(config.hidden_size, config.num_labels)
-
-
+    if config.fine_tune_mode == 'lora':
+      assert config.target_modules is not None and isinstance(config.target_modules, list), "target_modules must be a list of strings for lora fine-tuning"
+      self.gpt = exchange_model_layers(self.gpt, r=4, alpha=1.0, target_modules=config.target_modules)
 
   def forward(self, input_ids, attention_mask):
     '''Takes a batch of sentences and returns logits for sentiment classes'''
@@ -229,8 +231,14 @@ def model_test_eval(dataloader, model, device):
 
 
 def save_model(model, optimizer, args, config, filepath):
+  full_state_dict = model.state_dict()
+  # save parameters that require gradients (e.g., LoRA weights) and the classifier head, but not the frozen GPT parameters
+  trainable_params_names = [name for name, param in model.named_parameters() if param.requires_grad]
+  # save buffers (e.g., running mean and variance in batchnorm)
+  buffers_names = [name for name, buffer in model.named_buffers()]
+  model_state_dict = {name: full_state_dict[name] for name in trainable_params_names + buffers_names}
   save_info = {
-    'model': model.state_dict(),
+    'model': model_state_dict,
     'optim': optimizer.state_dict(),
     'args': args,
     'model_config': config,
@@ -262,7 +270,9 @@ def train(args):
             'num_labels': num_labels,
             'hidden_size': 768,
             'data_dir': '.',
-            'fine_tune_mode': args.fine_tune_mode}
+            'fine_tune_mode': args.fine_tune_mode,
+            'target_modules': args.target_modules
+            }
 
   config = SimpleNamespace(**config)
 
@@ -314,7 +324,7 @@ def test(args):
     saved = torch.load(args.filepath)
     config = saved['model_config']
     model = GPT2SentimentClassifier(config)
-    model.load_state_dict(saved['model'])
+    model.load_state_dict(saved['model'], strict=False) # strict=False to only load saved parameters
     model = model.to(device)
     print(f"load model from {args.filepath}")
 
@@ -351,10 +361,11 @@ def get_args():
   parser.add_argument("--seed", type=int, default=11711)
   parser.add_argument("--epochs", type=int, default=10)
   parser.add_argument("--fine-tune-mode", type=str,
-                      help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well',
-                      choices=('last-linear-layer', 'full-model'), default="last-linear-layer")
+                      help='last-linear-layer: the GPT parameters are frozen and the task specific head parameters are updated; full-model: GPT parameters are updated as well; lora: use LoRA fine-tuning',
+                      choices=('last-linear-layer', 'full-model', 'lora'), default="last-linear-layer")
   parser.add_argument("--use_gpu", action='store_true')
-
+  parser.add_argument("--target-modules", nargs='+', help="list of target modules for lora fine-tuning, e.g., --target-modules query key value dense"
+                      , default=None)
   parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
   parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
   parser.add_argument("--lr", type=float, help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 1e-5",
@@ -380,6 +391,7 @@ if __name__ == "__main__":
     dev='data/ids-sst-dev.csv',
     test='data/ids-sst-test-student.csv',
     fine_tune_mode=args.fine_tune_mode,
+    target_modules=args.target_modules,
     dev_out='predictions/' + args.fine_tune_mode + '-sst-dev-out.csv',
     test_out='predictions/' + args.fine_tune_mode + '-sst-test-out.csv'
   )
@@ -401,6 +413,7 @@ if __name__ == "__main__":
     dev='data/ids-cfimdb-dev.csv',
     test='data/ids-cfimdb-test-student.csv',
     fine_tune_mode=args.fine_tune_mode,
+    target_modules=args.target_modules,
     dev_out='predictions/' + args.fine_tune_mode + '-cfimdb-dev-out.csv',
     test_out='predictions/' + args.fine_tune_mode + '-cfimdb-test-out.csv'
   )
