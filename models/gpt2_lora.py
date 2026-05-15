@@ -7,6 +7,7 @@ from models.base_gpt import GPTPreTrainedModel
 from modules.gpt2_layer import GPT2Layer
 from utils import get_extended_attention_mask
 from modules.lora import exchange_model_layers
+from modules.reft import LoReFTIntervention, DiReFTIntervention, create_reft_mask 
 
 
 class GPT2ModelLora(GPTPreTrainedModel):
@@ -19,9 +20,10 @@ class GPT2ModelLora(GPTPreTrainedModel):
   3. A linear transformation layer for the [CLS] token (used in self.forward, as given).
   """
 
-  def __init__(self, config, enable_lora, lora_params):
+  def __init__(self, config, enable_lora, lora_params, enable_reft, reft_params):
     super().__init__(config)
     self.config = config
+    self.enable_reft = enable_reft 
 
     # Embedding layers.
     self.word_embedding = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
@@ -48,6 +50,23 @@ class GPT2ModelLora(GPTPreTrainedModel):
       print(f'Enabling LoRa')
       # Initialize Lora weights
       exchange_model_layers(self, **lora_params)
+
+
+    if self.enable_reft:
+      self.reft_p = reft_params['reft_p'] 
+      self.reft_s = reft_params['reft_s']
+
+      print(f'Enabling ReFT')
+      # Initialize ReFT weights
+
+      if reft_params['mode'] == 'Lora':
+        Intervention = LoReFTIntervention
+      else:
+        Intervention =  DiReFTIntervention
+
+      self.reft_layers = nn.ModuleList(
+          [Intervention(config.hidden_size, reft_params['rank']) for _ in range(config.num_hidden_layers)]
+      )
 
   #NOTE: We implemented this
   def embed(self, input_ids):
@@ -83,10 +102,17 @@ class GPT2ModelLora(GPTPreTrainedModel):
     # (with a value of a large negative number).
     extended_attention_mask: torch.Tensor = get_extended_attention_mask(attention_mask, self.dtype)
 
+    if self.enable_reft:
+      reft_mask = create_reft_mask(attention_mask, p=4, s=4, device=hidden_states.device)
+
     # Pass the hidden states through the encoder layers.
     for i, layer_module in enumerate(self.gpt_layers):
       # Feed the encoding from the last bert_layer to the next.
       hidden_states = layer_module(hidden_states, extended_attention_mask)
+
+      if self.enable_reft:
+
+        hidden_states = self.reft_layers[i](hidden_states, reft_mask)
 
     return hidden_states
 
@@ -121,10 +147,11 @@ class GPT2ModelLora(GPTPreTrainedModel):
   @classmethod
   def from_pretrained(cls, model='gpt2', d=768, l=12,
                       num_heads=12, enable_lora:bool=False,
-                      lora_params:dict={}):
+                      lora_params:dict={}, enable_reft:bool=False):
+
     gpt_model = OpenAIGPT2Model.from_pretrained(model).eval()
     our_model = GPT2ModelLora(GPT2Config(hidden_size=d, num_hidden_layers=l,num_attention_heads=num_heads,
-                                     intermediate_size=d*3), enable_lora, lora_params).eval()
+                                     intermediate_size=d*3), enable_lora, lora_params, enable_reft).eval()
 
 
     # Load word and positional embeddings.
