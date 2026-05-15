@@ -66,6 +66,7 @@ def exchange_model_layers(model: GPT2Model, r = 4, alpha = 1.0, target_modules =
     Returns:
         GPT2Model: The modified GPT2Model with LoRA linear layers.
     """
+    print(f'Initializing Lora, params: alpha={alpha}, r={r}, target_modules={target_modules}')
     # firstly, freeze all original parameters
     for param in model.parameters():
         param.requires_grad = False
