@@ -575,6 +575,28 @@ def test_the_size_of_lora_weights():
     print(f"LoRA parameters: {lora_params:,d}")
     print(f"Full model parameters: {full_params:,d}")
 
+
+def test_lora_after_initialization():
+  """
+  Simple test to ensure that model with loRA layers has the same output as the original model before training (since we copy the original weights to the loRA layers).
+  """
+  device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+  model = GPT2Model.from_pretrained()
+  model = model.to(device)
+  model.eval()
+  input_ids = torch.tensor([[50256, 50256, 50256]]).to(device) # dummy input (batch_size=1, seq_len=3)
+  attention_mask = torch.tensor([[1, 1, 1]]).to(device) 
+  original_output = model(input_ids, attention_mask)
+  model = exchange_model_layers(model, r=4, alpha=1.0, target_modules=['query', 'value'])
+  model = model.to(device)
+  model.eval()
+  lora_output = model(input_ids, attention_mask)
+  for key in original_output:
+    assert torch.allclose(original_output[key], lora_output[key], atol=1e-6), f"Output mismatch for {key} after exchanging with LoRA layers."
+  print("Test passed: Model outputs are the same before training after exchanging with LoRA layers.")
+
+
 if __name__ == "__main__":
 #   main()
-  test_the_size_of_lora_weights()
+# test_the_size_of_lora_weights()
+  test_lora_after_initialization()
