@@ -29,6 +29,7 @@ from datasets import (
 )
 from evaluation import model_eval_paraphrase, model_test_paraphrase
 from models.gpt2 import GPT2Model
+from models.gpt2_lora import GPT2ModelLora
 
 from optimizer import AdamW
 
@@ -50,12 +51,23 @@ class ParaphraseGPT(nn.Module):
 
   def __init__(self, args):
     super().__init__()
-    self.gpt = GPT2Model.from_pretrained(model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads)
+    self.gpt = GPT2ModelLora.from_pretrained(model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads,
+                                              enable_lora=args.enable_lora, lora_params=args.lora_params[0])
     self.paraphrase_detection_head = nn.Linear(args.d, 2)  # Paraphrase detection has two outputs: 1 (yes) or 0 (no).
 
-    # By default, fine-tune the full model.
-    for param in self.gpt.parameters():
-      param.requires_grad = True
+    self.enable_lora = args.enable_lora
+
+    # Initilize parameters so that if lora is activated just lora parameters affected
+    for name, param in self.gpt.named_parameters():
+
+      if self.enable_lora:
+        if 'lora' in name:
+          param.requires_grad = True 
+        else:
+          param.requires_grad = False
+      else:
+        # By default, fine-tune the full model. TODO: this is maybe not idea.
+        param.requires_grad = True
 
   def forward(self, input_ids, attention_mask):
     
@@ -195,7 +207,20 @@ def get_args():
                       help="The model size as specified on hugging face. DO NOT use the xl model.",
                       choices=['gpt2', 'gpt2-medium', 'gpt2-large'], default='gpt2')
 
+  # Added Lora params
+  parser.add_argument("--enable_lora", action='store_true')
+  parser.add_argument(
+    "--lora_target_modules",
+    nargs="+",
+    choices=["query", "key", "value", "dense"],
+    default=["query", "value"],
+    help="Target modules for LoRA"
+  )
+  parser.add_argument("--lora_r", type=float, default=4)
+  parser.add_argument("--lora_alpha", type=float, default=1.0)
+
   args = parser.parse_args()
+
   return args
 
 
@@ -215,6 +240,9 @@ def add_arguments(args):
     args.num_heads = 20
   else:
     raise Exception(f'{args.model_size} is not supported.')
+
+  args.lora_params=dict(r=args.lora_r, alpha=args.lora_alpha, target_modules=args.lora_target_modules),
+
   return args
 
 

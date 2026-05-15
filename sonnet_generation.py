@@ -61,7 +61,6 @@ class SonnetGPT(nn.Module):
           param.requires_grad = True 
         else:
           param.requires_grad = False
-          print(name)
       else:
         # By default, fine-tune the full model. TODO: this is maybe not idea.
         param.requires_grad = True
