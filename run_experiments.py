@@ -8,14 +8,20 @@ Creates:
   experiments/plots/
 
 Supports:
-  - full finetuning vs last-layer vs LoRA vs ReFT
+  - full finetuning vs last-layer vs LoRA
+  - optional ReFT experiments, disabled by default
   - LoRA rank ablation
   - limited-data PEFT experiments
   - sonnet decoding sweeps
 
+Important:
+  ReFT is NOT implemented yet, so ReFT experiments are NOT included by default.
+  To include ReFT placeholder commands later, pass:
+    --include_reft
+
 Assumptions:
   - LoRA is enabled with: --enable_lora
-  - ReFT is enabled with: --enable_reft
+  - ReFT would be enabled with: --enable_reft
   - LoRA rank is set with: --lora_r
   - limited data is set with: --train_fraction
   - sonnet decoding may support: --top_k and --line_count_stopping
@@ -65,8 +71,8 @@ def get_supported_flags(script: str) -> set:
     """
     Best-effort extraction of supported argparse flags from script --help.
 
-    This is optional. By default we do NOT filter flags, because some flags are
-    placeholders that will be added later, e.g. --enable_reft.
+    By default, we do NOT filter flags. This is only used if
+    --filter-unsupported-flags is passed.
     """
     try:
         result = subprocess.run(
@@ -332,6 +338,14 @@ def lora_flags(rank: int, alpha: float, target_modules: List[str]) -> List[str]:
     return flags
 
 
+def reft_flags(args: argparse.Namespace) -> List[str]:
+    """
+    ReFT is not implemented yet. This only returns the placeholder flag.
+    These experiments are only included if --include_reft is passed.
+    """
+    return ["--enable_reft"]
+
+
 def build_comparison_experiments(args: argparse.Namespace) -> List[Experiment]:
     common = base_runtime_args(args)
     exps = []
@@ -359,7 +373,6 @@ def build_comparison_experiments(args: argparse.Namespace) -> List[Experiment]:
         )
     )
 
-    # So LoRA uses last-linear-layer mode while LoRA params stay trainable.
     exps.append(
         Experiment(
             name="sentiment_lora_r4",
@@ -373,17 +386,18 @@ def build_comparison_experiments(args: argparse.Namespace) -> List[Experiment]:
         )
     )
 
-    exps.append(
-        Experiment(
-            name="sentiment_reft_placeholder",
-            group="comparison",
-            task="sentiment",
-            method="reft",
-            script="classifier.py",
-            args=common + ["--fine-tune-mode", "full-model", "--enable_reft"],
-            notes="ReFT placeholder. Assumes --enable_reft exists but does nothing until ReFT is implemented.",
+    if args.include_reft:
+        exps.append(
+            Experiment(
+                name="sentiment_reft",
+                group="comparison",
+                task="sentiment",
+                method="reft",
+                script="classifier.py",
+                args=common + ["--fine-tune-mode", "full-model"] + reft_flags(args),
+                notes="ReFT requested with --include_reft. This requires ReFT to be implemented in classifier.py.",
+            )
         )
-    )
 
     # Paraphrase comparison.
     exps.append(
@@ -408,17 +422,18 @@ def build_comparison_experiments(args: argparse.Namespace) -> List[Experiment]:
         )
     )
 
-    exps.append(
-        Experiment(
-            name="paraphrase_reft_placeholder",
-            group="comparison",
-            task="paraphrase",
-            method="reft",
-            script="paraphrase_detection.py",
-            args=common + ["--enable_reft"],
-            notes="ReFT placeholder. Assumes --enable_reft exists but does nothing until ReFT is implemented.",
+    if args.include_reft:
+        exps.append(
+            Experiment(
+                name="paraphrase_reft",
+                group="comparison",
+                task="paraphrase",
+                method="reft",
+                script="paraphrase_detection.py",
+                args=common + reft_flags(args),
+                notes="ReFT requested with --include_reft. This requires ReFT to be implemented in paraphrase_detection.py.",
+            )
         )
-    )
 
     # Sonnet comparison.
     exps.append(
@@ -445,17 +460,20 @@ def build_comparison_experiments(args: argparse.Namespace) -> List[Experiment]:
         )
     )
 
-    exps.append(
-        Experiment(
-            name="sonnet_reft_placeholder",
-            group="comparison",
-            task="sonnet",
-            method="reft",
-            script="sonnet_generation.py",
-            args=common + ["--enable_reft", "--temperature", str(args.temperature), "--top_p", str(args.top_p)],
-            notes="ReFT placeholder. Assumes --enable_reft exists but does nothing until ReFT is implemented.",
+    if args.include_reft:
+        exps.append(
+            Experiment(
+                name="sonnet_reft",
+                group="comparison",
+                task="sonnet",
+                method="reft",
+                script="sonnet_generation.py",
+                args=common
+                + reft_flags(args)
+                + ["--temperature", str(args.temperature), "--top_p", str(args.top_p)],
+                notes="ReFT requested with --include_reft. This requires ReFT to be implemented in sonnet_generation.py.",
+            )
         )
-    )
 
     return exps
 
@@ -508,8 +526,10 @@ def build_limited_data_experiments(args: argparse.Namespace) -> List[Experiment]
         for fraction in args.train_fractions:
             # Full model.
             full_extra = ["--train_fraction", str(fraction)]
+
             if task == "sentiment":
                 full_extra = ["--fine-tune-mode", "full-model"] + full_extra
+
             if task == "sonnet":
                 full_extra += ["--temperature", str(args.temperature), "--top_p", str(args.top_p)]
 
@@ -521,6 +541,7 @@ def build_limited_data_experiments(args: argparse.Namespace) -> List[Experiment]
                     method="full-model",
                     script=script,
                     args=common + full_extra,
+                    notes="Requires --train_fraction to be implemented in the task script.",
                 )
             )
 
@@ -528,8 +549,10 @@ def build_limited_data_experiments(args: argparse.Namespace) -> List[Experiment]
             lora_extra = ["--train_fraction", str(fraction)] + lora_flags(
                 4, args.lora_alpha, args.lora_target_modules
             )
+
             if task == "sentiment":
                 lora_extra = ["--fine-tune-mode", "last-linear-layer"] + lora_extra
+
             if task == "sonnet":
                 lora_extra += ["--temperature", str(args.temperature), "--top_p", str(args.top_p)]
 
@@ -541,27 +564,31 @@ def build_limited_data_experiments(args: argparse.Namespace) -> List[Experiment]
                     method="lora",
                     script=script,
                     args=common + lora_extra,
+                    notes="Requires --train_fraction to be implemented in the task script.",
                 )
             )
 
-            # ReFT placeholder.
-            reft_extra = ["--train_fraction", str(fraction), "--enable_reft"]
-            if task == "sentiment":
-                reft_extra = ["--fine-tune-mode", "full-model"] + reft_extra
-            if task == "sonnet":
-                reft_extra += ["--temperature", str(args.temperature), "--top_p", str(args.top_p)]
+            # ReFT only if explicitly requested.
+            if args.include_reft:
+                reft_extra = ["--train_fraction", str(fraction)] + reft_flags(args)
 
-            exps.append(
-                Experiment(
-                    name=f"{task}_reft_data_{fraction}",
-                    group="limited_data",
-                    task=task,
-                    method="reft",
-                    script=script,
-                    args=common + reft_extra,
-                    notes="ReFT placeholder. Assumes --enable_reft exists but does nothing until ReFT is implemented.",
+                if task == "sentiment":
+                    reft_extra = ["--fine-tune-mode", "full-model"] + reft_extra
+
+                if task == "sonnet":
+                    reft_extra += ["--temperature", str(args.temperature), "--top_p", str(args.top_p)]
+
+                exps.append(
+                    Experiment(
+                        name=f"{task}_reft_data_{fraction}",
+                        group="limited_data",
+                        task=task,
+                        method="reft",
+                        script=script,
+                        args=common + reft_extra,
+                        notes="ReFT requested with --include_reft. Requires ReFT and --train_fraction to be implemented.",
+                    )
                 )
-            )
 
     return exps
 
@@ -611,6 +638,7 @@ def build_sonnet_decoding_experiments(args: argparse.Namespace) -> List[Experime
                     "--top_k",
                     str(top_k),
                 ],
+                notes="Requires --top_k to be implemented in sonnet_generation.py.",
             )
         )
 
@@ -629,6 +657,7 @@ def build_sonnet_decoding_experiments(args: argparse.Namespace) -> List[Experime
                 str(args.top_p),
                 "--line_count_stopping",
             ],
+            notes="Requires --line_count_stopping to be implemented in sonnet_generation.py.",
         )
     )
 
@@ -675,6 +704,7 @@ def plot_results() -> None:
         return
 
     rows = []
+
     with open(RESULTS_CSV, "r", newline="") as f:
         reader = csv.DictReader(f)
 
@@ -746,19 +776,26 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--top_p", type=float, default=0.9)
 
     parser.add_argument("--lora_alpha", type=float, default=1.0)
+
     parser.add_argument(
         "--lora_target_modules",
         nargs="+",
         choices=["query", "key", "value", "dense"],
         default=["query", "value"],
     )
-    parser.add_argument("--lora_ranks", type=int, nargs="+", default=[2, 4, 8, 16])
 
+    parser.add_argument("--lora_ranks", type=int, nargs="+", default=[2, 4, 8, 16])
     parser.add_argument("--train_fractions", type=float, nargs="+", default=[0.10, 0.25, 0.50, 1.00])
 
     parser.add_argument("--temperature_sweep", type=float, nargs="+", default=[0.7, 1.0, 1.2])
     parser.add_argument("--top_p_sweep", type=float, nargs="+", default=[0.8, 0.9, 0.95])
     parser.add_argument("--top_k_sweep", type=int, nargs="+", default=[20, 50, 100])
+
+    parser.add_argument(
+        "--include_reft",
+        action="store_true",
+        help="Include ReFT experiments. Disabled by default because ReFT is not implemented yet.",
+    )
 
     return parser.parse_args()
 
@@ -775,6 +812,9 @@ def main() -> None:
 
     print(f"[INFO] Python executable: {sys.executable}")
     print(f"[INFO] Planned experiments: {len(experiments)}")
+
+    if not args.include_reft:
+        print("[INFO] ReFT experiments are disabled. Use --include_reft only after ReFT is implemented.")
 
     for exp in experiments:
         run_experiment(

@@ -18,11 +18,12 @@ Dry-run prints the commands without training anything.
 
 Training pipeline is basically this:
 
+```text
 run_experiments.py
     ->
 builds a list of Experiment objects
     ->
-each Experiment has **name, task, method, script, command-line args**
+each Experiment has name, task, method, script, command-line args
     ->
 runs each command as a separate subprocess
     ->
@@ -31,8 +32,9 @@ saves full output to experiments/logs/
 parses metrics like dev acc and train loss
     ->
 appends one row per run to experiments/results.csv
+```
 
-
+```text
 full-model:
     train all GPT-2 parameters
 
@@ -46,7 +48,9 @@ LoRA:
     train only LoRA params (+ task head where applicable)
 
 ReFT:
-    currently only a placeholder flag
+    not included by default because it is not implemented yet
+    can be included later with --include_reft
+```
 
 ---
 
@@ -73,11 +77,19 @@ python3 run_experiments.py \
   --lora_target_modules query value
 ```
 
-By default, it does **not** use CUDA. ```bash
+By default, it does **not** use CUDA.
+
+```bash
 --use_gpu
 ```
 
 So the default run uses CPU.
+
+By default, it also does **not** include ReFT experiments. ReFT experiments are only added if you explicitly pass:
+
+```bash
+--include_reft
+```
 
 ---
 
@@ -88,6 +100,7 @@ The default experiment group is:
 ```bash
 --experiment comparison
 ```
+
 This launches the main comparison experiments across all tasks.
 
 With no arguments, the planned experiments are:
@@ -96,15 +109,27 @@ With no arguments, the planned experiments are:
 sentiment_last_linear_layer
 sentiment_full_model
 sentiment_lora_r4
-sentiment_reft_placeholder
 paraphrase_full_model
 paraphrase_lora_r4
-paraphrase_reft_placeholder
 sonnet_full_model
 sonnet_lora_r4
-sonnet_reft_placeholder
 ```
-So by default, `run_experiments.py` plans **10 experiments**.
+
+So by default, `run_experiments.py` plans **7 experiments**.
+
+If you include ReFT with:
+
+```bash
+python3 run_experiments.py --include_reft
+```
+
+then the planned comparison experiments also include:
+
+```text
+sentiment_reft
+paraphrase_reft
+sonnet_reft
+```
 
 **THIS INCLUDES PARAPHRASE EXPERIMENTS ON THE DATASET SO TIME MIGHT SKYROCKET!!!**
 
@@ -212,12 +237,12 @@ python3 run_experiments.py --experiment lora_rank
 
 ## Default ReFT behavior
 
-ReFT is included in the planned comparisons as a placeholder:
+ReFT is **not included by default** because it is not implemented yet.
 
-```text
-sentiment_reft_placeholder
-paraphrase_reft_placeholder
-sonnet_reft_placeholder
+To include ReFT placeholder commands later, run:
+
+```bash
+python3 run_experiments.py --experiment comparison --include_reft
 ```
 
 These commands use:
@@ -324,7 +349,7 @@ python3 run_experiments.py --experiment comparison
 
 Options:
 
-- `comparison`: compare full finetuning, last-layer, LoRA, and ReFT placeholder.
+- `comparison`: compare full finetuning, last-layer, and LoRA. ReFT is only included if `--include_reft` is passed.
 - `lora_rank`: run LoRA rank ablations.
 - `limited_data`: run experiments with different training-data fractions.
 - `sonnet_decoding`: run sonnet generation decoding sweeps.
@@ -365,6 +390,20 @@ Use this before launching long experiments.
 
 ---
 
+## `--include_reft`
+
+Includes ReFT experiments in the planned experiment list.
+
+Example:
+
+```bash
+python3 run_experiments.py --experiment comparison --include_reft --dry-run
+```
+
+ReFT is disabled by default because it is not implemented yet.
+
+---
+
 ## `--max-runs`
 
 Limits how many experiments are launched after filtering by `--experiment` and `--task`.
@@ -375,12 +414,11 @@ Example:
 python3 run_experiments.py --experiment comparison --task sonnet --max-runs 1
 ```
 
-The matching sonnet comparison experiments are ordered like this:
+The matching sonnet comparison experiments are ordered like this by default:
 
 ```text
 1. sonnet_full_model
 2. sonnet_lora_r4
-3. sonnet_reft_placeholder
 ```
 
 So this command runs only:
@@ -402,6 +440,20 @@ sonnet_full_model
 sonnet_lora_r4
 ```
 
+If you include ReFT:
+
+```bash
+python3 run_experiments.py --experiment comparison --task sonnet --include_reft --dry-run
+```
+
+then the matching sonnet comparison experiments are:
+
+```text
+1. sonnet_full_model
+2. sonnet_lora_r4
+3. sonnet_reft
+```
+
 You can always confirm what will run using:
 
 ```bash
@@ -419,6 +471,7 @@ Example:
 ```bash
 python3 run_experiments.py --experiment comparison --task sonnet --epochs 1
 ```
+
 ---
 
 ## `--batch_size`
@@ -430,6 +483,7 @@ Example:
 ```bash
 python3 run_experiments.py --experiment comparison --batch_size 8
 ```
+
 ---
 
 ## `--lr`
@@ -441,6 +495,7 @@ Example:
 ```bash
 python3 run_experiments.py --experiment comparison --lr 1e-5
 ```
+
 ---
 
 ## `--use_gpu`
@@ -709,6 +764,12 @@ Dry-run all experiments:
 python3 run_experiments.py --experiment all --dry-run
 ```
 
+Dry-run all experiments including ReFT:
+
+```bash
+python3 run_experiments.py --experiment all --include_reft --dry-run
+```
+
 Dry-run LoRA rank ablation:
 
 ```bash
@@ -731,7 +792,7 @@ python3 run_experiments.py --experiment sonnet_decoding --dry-run
 
 # Example experiment commands
 
-## Compare full-model, LoRA, and ReFT placeholder on sonnets
+## Compare full-model and LoRA on sonnets
 
 ```bash
 python3 run_experiments.py \
@@ -739,6 +800,19 @@ python3 run_experiments.py \
   --task sonnet \
   --epochs 1 \
   --batch_size 8
+```
+
+---
+
+## Compare full-model, LoRA, and ReFT on sonnets after ReFT is implemented
+
+```bash
+python3 run_experiments.py \
+  --experiment comparison \
+  --task sonnet \
+  --epochs 1 \
+  --batch_size 8 \
+  --include_reft
 ```
 
 ---
@@ -836,7 +910,7 @@ Important columns:
 - `trainable_percent`: percentage of trainable parameters if printed by LoRA.
 - `command`: exact command that was launched.
 - `log_file`: full terminal output for that experiment.
-- `notes`: extra notes, such as whether ReFT is only a placeholder.
+- `notes`: extra notes, such as whether ReFT was included.
 
 ---
 
@@ -847,6 +921,7 @@ Logs are stored in:
 ```text
 experiments/logs/
 ```
+
 ---
 
 # Plotting results
@@ -867,7 +942,7 @@ experiments/plots/
 
 # TLDR
 
-- Running without arguments launches the default comparison over all tasks:
+- Running without arguments launches the default comparison over all tasks, without ReFT:
 
 ```bash
 python3 run_experiments.py
@@ -891,15 +966,19 @@ python3 run_experiments.py --dry-run
 --lora_r
 ```
 
-- ReFT is assumed to be enabled with:
+- ReFT would be enabled with:
 
 ```bash
 --enable_reft
+```
+
+- ReFT experiments are disabled by default and only included if:
+
+```bash
+--include_reft
 ```
 
 - ReFT is currently only a placeholder until the ReFT module is implemented.
 - Limited-data experiments require `--train_fraction` to be implemented in each task script.
 - Sonnet top-k decoding requires `--top_k` to be implemented in `sonnet_generation.py`.
 - Sonnet line-count stopping requires `--line_count_stopping` to be implemented in `sonnet_generation.py`.
-
-
