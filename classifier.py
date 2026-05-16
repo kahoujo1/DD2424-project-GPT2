@@ -15,6 +15,7 @@ from transformers import GPT2Tokenizer
 from sklearn.metrics import f1_score, accuracy_score
 
 from models.gpt2 import GPT2Model
+from models.gpt2_lora import GPT2ModelLora
 from optimizer import AdamW
 from tqdm import tqdm
 
@@ -43,13 +44,19 @@ class GPT2SentimentClassifier(torch.nn.Module):
   def __init__(self, config):
     super(GPT2SentimentClassifier, self).__init__()
     self.num_labels = config.num_labels
-    self.gpt = GPT2Model.from_pretrained()
+    self.gpt = GPT2ModelLora.from_pretrained(enable_lora=config.enable_lora, 
+                                         lora_params=config.lora_params)
 
     # Pretrain mode does not require updating GPT paramters.
     assert config.fine_tune_mode in ["last-linear-layer", "full-model"]
-    for param in self.gpt.parameters():
+    assert not(config.fine_tune_mode == 'full-model' and config.enable_lora), "Does not make sense to have lora and training of the full model"
+
+    for name, param in self.gpt.named_parameters():
       if config.fine_tune_mode == 'last-linear-layer':
-        param.requires_grad = False
+        if 'lora' in name:
+          param.requires_grad = True 
+        else:
+          param.requires_grad = False
       elif config.fine_tune_mode == 'full-model':
         param.requires_grad = True
         
@@ -262,7 +269,9 @@ def train(args):
             'num_labels': num_labels,
             'hidden_size': 768,
             'data_dir': '.',
-            'fine_tune_mode': args.fine_tune_mode}
+            'fine_tune_mode': args.fine_tune_mode,
+            'enable_lora': args.enable_lora,
+            'lora_params': args.lora_params,}
 
   config = SimpleNamespace(**config)
 
@@ -311,7 +320,7 @@ def train(args):
 def test(args):
   with torch.no_grad():
     device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
-    saved = torch.load(args.filepath)
+    saved = torch.load(args.filepath, weights_only=False)
     config = saved['model_config']
     model = GPT2SentimentClassifier(config)
     model.load_state_dict(saved['model'])
@@ -359,6 +368,19 @@ def get_args():
   parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
   parser.add_argument("--lr", type=float, help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 1e-5",
                       default=1e-3)
+  
+  # Added Lora params
+  parser.add_argument("--enable_lora", action='store_true')
+  parser.add_argument(
+    "--lora_target_modules",
+    nargs="+",
+    choices=["query", "key", "value", "dense"],
+    default=["query", "value"],
+    help="Target modules for LoRA"
+  )
+  parser.add_argument("--lora_r", type=float, default=4)
+  parser.add_argument("--lora_alpha", type=float, default=1.0)
+
 
   args = parser.parse_args()
   return args
@@ -381,7 +403,9 @@ if __name__ == "__main__":
     test='data/ids-sst-test-student.csv',
     fine_tune_mode=args.fine_tune_mode,
     dev_out='predictions/' + args.fine_tune_mode + '-sst-dev-out.csv',
-    test_out='predictions/' + args.fine_tune_mode + '-sst-test-out.csv'
+    test_out='predictions/' + args.fine_tune_mode + '-sst-test-out.csv',
+    enable_lora=args.enable_lora,
+    lora_params=dict(r=args.lora_r, alpha=args.lora_alpha, target_modules=args.lora_target_modules),
   )
 
   train(config)
@@ -395,14 +419,16 @@ if __name__ == "__main__":
     lr=args.lr,
     use_gpu=args.use_gpu,
     epochs=args.epochs,
-    batch_size=8,
+    batch_size=args.batch_size,
     hidden_dropout_prob=args.hidden_dropout_prob,
     train='data/ids-cfimdb-train.csv',
     dev='data/ids-cfimdb-dev.csv',
     test='data/ids-cfimdb-test-student.csv',
     fine_tune_mode=args.fine_tune_mode,
     dev_out='predictions/' + args.fine_tune_mode + '-cfimdb-dev-out.csv',
-    test_out='predictions/' + args.fine_tune_mode + '-cfimdb-test-out.csv'
+    test_out='predictions/' + args.fine_tune_mode + '-cfimdb-test-out.csv',
+    enable_lora=args.enable_lora,
+    lora_params=dict(r=4, alpha=1.0, target_modules=['query', 'value']),
   )
 
   train(config)
