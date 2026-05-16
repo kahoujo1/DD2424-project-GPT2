@@ -52,7 +52,7 @@ class ParaphraseGPT(nn.Module):
   def __init__(self, args):
     super().__init__()
     self.gpt = GPT2ModelLora.from_pretrained(model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads,
-                                              enable_lora=args.enable_lora, lora_params=args.lora_params[0])
+                                              enable_lora=args.enable_lora, lora_params=args.lora_params)
     self.paraphrase_detection_head = nn.Linear(args.d, 2)  # Paraphrase detection has two outputs: 1 (yes) or 0 (no).
 
     self.enable_lora = args.enable_lora
@@ -216,8 +216,13 @@ def get_args():
     default=["query", "value"],
     help="Target modules for LoRA"
   )
-  parser.add_argument("--lora_r", type=float, default=4)
+  parser.add_argument("--lora_r", type=int, default=4)
   parser.add_argument("--lora_alpha", type=float, default=1.0)
+
+
+  # So run_experiments.py doesn't crash
+  parser.add_argument("--enable_reft", action="store_true")
+  parser.add_argument("--train_fraction", type=float, default=1.0)
 
   args = parser.parse_args()
 
@@ -241,7 +246,7 @@ def add_arguments(args):
   else:
     raise Exception(f'{args.model_size} is not supported.')
 
-  args.lora_params=dict(r=args.lora_r, alpha=args.lora_alpha, target_modules=args.lora_target_modules),
+  args.lora_params=dict(r=args.lora_r, alpha=args.lora_alpha, target_modules=args.lora_target_modules)
 
   return args
 

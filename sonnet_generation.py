@@ -48,7 +48,7 @@ class SonnetGPT(nn.Module):
   def __init__(self, args):
     super().__init__()
     self.gpt = GPT2ModelLora.from_pretrained(model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads, 
-                                             enable_lora=args.enable_lora, lora_params=args.lora_params[0])
+                                             enable_lora=args.enable_lora, lora_params=args.lora_params)
     self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
     self.tokenizer.pad_token = self.tokenizer.eos_token
     self.enable_lora = args.enable_lora
@@ -254,8 +254,14 @@ def get_args():
     default=["query", "value"],
     help="Target modules for LoRA"
   )
-  parser.add_argument("--lora_r", type=float, default=4)
+  parser.add_argument("--lora_r", type=int, default=4)
   parser.add_argument("--lora_alpha", type=float, default=1.0)
+
+  # So run_experiments.py doesn't crash
+  parser.add_argument("--enable_reft", action="store_true")
+  parser.add_argument("--train_fraction", type=float, default=1.0)
+  parser.add_argument("--top_k", type=int, default=None)
+  parser.add_argument("--line_count_stopping", action="store_true")
 
   args = parser.parse_args()
   return args
@@ -278,7 +284,7 @@ def add_arguments(args):
   else:
     raise Exception(f'{args.model_size} is not supported.')
 
-  args.lora_params=dict(r=args.lora_r, alpha=args.lora_alpha, target_modules=args.lora_target_modules),
+  args.lora_params=dict(r=args.lora_r, alpha=args.lora_alpha, target_modules=args.lora_target_modules)
 
   return args
 

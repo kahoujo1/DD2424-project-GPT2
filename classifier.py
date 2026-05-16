@@ -378,8 +378,13 @@ def get_args():
     default=["query", "value"],
     help="Target modules for LoRA"
   )
-  parser.add_argument("--lora_r", type=float, default=4)
+  parser.add_argument("--lora_r", type=int, default=4)
   parser.add_argument("--lora_alpha", type=float, default=1.0)
+
+
+  # So run_experiments.py doesn't crash
+  parser.add_argument("--enable_reft", action="store_true")
+  parser.add_argument("--train_fraction", type=float, default=1.0)
 
 
   args = parser.parse_args()
@@ -428,7 +433,7 @@ if __name__ == "__main__":
     dev_out='predictions/' + args.fine_tune_mode + '-cfimdb-dev-out.csv',
     test_out='predictions/' + args.fine_tune_mode + '-cfimdb-test-out.csv',
     enable_lora=args.enable_lora,
-    lora_params=dict(r=4, alpha=1.0, target_modules=['query', 'value']),
+    lora_params=dict(r=args.lora_r, alpha=args.lora_alpha, target_modules=args.lora_target_modules),
   )
 
   train(config)
