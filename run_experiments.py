@@ -359,7 +359,6 @@ def build_comparison_experiments(args: argparse.Namespace) -> List[Experiment]:
         )
     )
 
-    # Your classifier asserts that LoRA should not be combined with full-model.
     # So LoRA uses last-linear-layer mode while LoRA params stay trainable.
     exps.append(
         Experiment(
