@@ -53,13 +53,13 @@ class GPT2ModelLora(GPTPreTrainedModel):
 
 
     if self.enable_reft:
-      self.reft_p = reft_params['reft_p'] 
-      self.reft_s = reft_params['reft_s']
+      self.reft_p = reft_params['p'] 
+      self.reft_s = reft_params['s']
 
       print(f'Enabling ReFT')
-      # Initialize ReFT weights
+      assert reft_params['mode'] in ['LoraReft', 'DiReFT'], "Invalid ReFT mode. Choose 'LoraReft' or 'DiReFT'."
+      if reft_params['mode'] == 'LoraReft':
 
-      if reft_params['mode'] == 'Lora':
         Intervention = LoReFTIntervention
       else:
         Intervention =  DiReFTIntervention
@@ -103,7 +103,7 @@ class GPT2ModelLora(GPTPreTrainedModel):
     extended_attention_mask: torch.Tensor = get_extended_attention_mask(attention_mask, self.dtype)
 
     if self.enable_reft:
-      reft_mask = create_reft_mask(attention_mask, p=4, s=4, device=hidden_states.device)
+      reft_mask = create_reft_mask(attention_mask, p=self.reft_p, s=self.reft_s, device=hidden_states.device)
 
     # Pass the hidden states through the encoder layers.
     for i, layer_module in enumerate(self.gpt_layers):
@@ -111,7 +111,6 @@ class GPT2ModelLora(GPTPreTrainedModel):
       hidden_states = layer_module(hidden_states, extended_attention_mask)
 
       if self.enable_reft:
-
         hidden_states = self.reft_layers[i](hidden_states, reft_mask)
 
     return hidden_states
@@ -147,11 +146,12 @@ class GPT2ModelLora(GPTPreTrainedModel):
   @classmethod
   def from_pretrained(cls, model='gpt2', d=768, l=12,
                       num_heads=12, enable_lora:bool=False,
-                      lora_params:dict={}, enable_reft:bool=False):
+                      lora_params:dict={}, enable_reft:bool=False,
+                      reft_params:dict={}):
 
     gpt_model = OpenAIGPT2Model.from_pretrained(model).eval()
     our_model = GPT2ModelLora(GPT2Config(hidden_size=d, num_hidden_layers=l,num_attention_heads=num_heads,
-                                     intermediate_size=d*3), enable_lora, lora_params, enable_reft).eval()
+                                     intermediate_size=d*3), enable_lora, lora_params, enable_reft, reft_params).eval()
 
 
     # Load word and positional embeddings.

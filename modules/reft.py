@@ -37,65 +37,65 @@ def create_reft_mask(
 class LoReFTIntervention(nn.Module):
     def __init__(self, hidden_size, rank=4):
         super().__init__()
+
+        print(f'Initializing LoReFT intervention with rank {rank}')
+
         self.rank = rank
 
-        # Low-rank rotation matrix (hidden_size -> rank)
-        self.R = nn.Linear(hidden_size, rank, bias=False)
-        # Learned linear transform in the subspace
-        self.W = nn.Linear(rank, rank)
-        
-        # Optionally keep R orthonormal
-        nn.init.orthogonal_(self.R.weight)
+        # Low-rank rotation matrix: weight shape [hidden_size, rank], kept orthonormal via parametrization
+        self.R_reft = nn.Linear(hidden_size, rank, bias=False)
+        self.R_reft = torch.nn.utils.parametrizations.orthogonal(self.R_reft)
+
+        # Learned linear transform in the subspace (no orthogonal constraint)
+        self.W_reft = nn.Linear(hidden_size, rank)
 
     def forward(self, hidden_states, reft_mask):
         """
         hidden_states: [batch, seq_len, hidden_size]
-        reft_mask:     [seq_len] bool
+        reft_mask:     [batch, seq_len] bool
         """
-        selected = hidden_states[:, reft_mask, :]         # [B, T', H]
 
-        projected = self.R(selected)                       # [B, T', rank]
-        transformed = self.W(projected)                    # [B, T', rank]
+        selected = hidden_states[reft_mask]
 
-        # Project back and compute delta
-        delta = transformed @ self.R.weight                # [B, T', H]
+        rotated = self.R_reft(selected)                                    # h @ R
+        transformed = self.W_reft(selected)                                # W*h + b
+        delta = (transformed - rotated) @ self.R_reft.weight            # R^T(Wh + b - Rh)
 
-        # Write back without mutating original
+        # Clone necessary to not mess up gradients
         out = hidden_states.clone()
-        out[:, reft_mask, :] = selected + delta
+        out[reft_mask] = selected + delta
 
         return out
+
+
 
 class DiReFTIntervention(nn.Module):
     def __init__(self, hidden_size, rank=4):
         super().__init__()
+
         self.rank = rank
+        print(f"Initializing DiReFT intervention with rank {rank}")
 
-        # Two independent projection matrices (no weight tying)
-        self.R1 = nn.Linear(hidden_size, rank, bias=False)
-        self.R2 = nn.Linear(hidden_size, rank, bias=False)
-        # Learned linear transform in the subspace
-        self.W = nn.Linear(rank, rank)
+        # Low-rank rotation matrix, kept orthonormal via parametrization
+        self.R_reft = nn.Linear(hidden_size, rank, bias=False)
+        self.R_reft = torch.nn.utils.parametrizations.orthogonal(self.R_reft)
 
-        # No orthogonal init constraint in DiReFT
-        nn.init.kaiming_uniform_(self.R1.weight)
-        nn.init.kaiming_uniform_(self.R2.weight)
+        # Learned source (no orthogonal constraint)
+        self.W_reft = nn.Linear(hidden_size, rank)
 
     def forward(self, hidden_states, reft_mask):
         """
         hidden_states: [batch, seq_len, hidden_size]
-        reft_mask:     [seq_len] bool
+        reft_mask:     [batch, seq_len] bool
         """
-        selected = hidden_states[:, reft_mask, :]         # [B, T', H]
 
-        projected = self.R1(selected)                      # [B, T', rank]
-        transformed = self.W(projected)                    # [B, T', rank]
+        selected = hidden_states[reft_mask]                         # [N, hidden_size]
 
-        # Project back with independent R2 (no weight tying)
-        delta = transformed @ self.R2.weight               # [B, T', H]
+        transformed = self.W_reft(selected)                         # Wh + b, shape [N, rank]
+        delta = transformed @ self.R_reft.weight                    # R^T(Wh + b), shape [N, hidden_size]
 
-        # Write back without mutating original
+        # Clone necessary to not mess up gradients
         out = hidden_states.clone()
-        out[:, reft_mask, :] = selected + delta
+        out[reft_mask] = selected + delta
 
         return out

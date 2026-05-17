@@ -45,15 +45,18 @@ class GPT2SentimentClassifier(torch.nn.Module):
     super(GPT2SentimentClassifier, self).__init__()
     self.num_labels = config.num_labels
     self.gpt = GPT2ModelLora.from_pretrained(enable_lora=config.enable_lora, 
-                                         lora_params=config.lora_params)
+                                         lora_params=config.lora_params,
+                                         enable_reft=config.enable_reft,
+                                         reft_params=config.reft_params,)
 
     # Pretrain mode does not require updating GPT paramters.
     assert config.fine_tune_mode in ["last-linear-layer", "full-model"]
     assert not(config.fine_tune_mode == 'full-model' and config.enable_lora), "Does not make sense to have lora and training of the full model"
+    assert not(config.fine_tune_mode == 'full-model' and config.enable_reft), "Does not make sense to have reft and training of the full model"
 
     for name, param in self.gpt.named_parameters():
       if config.fine_tune_mode == 'last-linear-layer':
-        if 'lora' in name:
+        if 'lora' in name or 'reft' in name:
           param.requires_grad = True 
         else:
           param.requires_grad = False
@@ -271,7 +274,10 @@ def train(args):
             'data_dir': '.',
             'fine_tune_mode': args.fine_tune_mode,
             'enable_lora': args.enable_lora,
-            'lora_params': args.lora_params,}
+            'lora_params': args.lora_params,
+            'enable_reft': args.enable_reft,
+            'reft_params': args.reft_params,
+            }
 
   config = SimpleNamespace(**config)
 
@@ -381,6 +387,12 @@ def get_args():
   parser.add_argument("--lora_r", type=float, default=4)
   parser.add_argument("--lora_alpha", type=float, default=1.0)
 
+  ## Added Reft params
+  parser.add_argument("--enable_reft", action='store_true')
+  parser.add_argument("--reft_p", type=int, default=2, help="Number of prefix tokens to apply ReFT to")
+  parser.add_argument("--reft_s", type=int, default=2, help="Number of suffix tokens to apply ReFT to")
+  parser.add_argument("--reft_mode", type=str, choices=['LoraReft', 'DiReFT'], default='LoraReft', help="Whether to use LoReFT or DiReFT")
+  parser.add_argument("--reft_rank", type=int, default=4, help="Rank for the ReFT intervention")
 
   args = parser.parse_args()
   return args
@@ -406,6 +418,8 @@ if __name__ == "__main__":
     test_out='predictions/' + args.fine_tune_mode + '-sst-test-out.csv',
     enable_lora=args.enable_lora,
     lora_params=dict(r=args.lora_r, alpha=args.lora_alpha, target_modules=args.lora_target_modules),
+    enable_reft=args.enable_reft,
+    reft_params=dict(p=args.reft_p, s=args.reft_s, mode=args.reft_mode, rank=args.reft_rank),
   )
 
   train(config)
@@ -428,7 +442,9 @@ if __name__ == "__main__":
     dev_out='predictions/' + args.fine_tune_mode + '-cfimdb-dev-out.csv',
     test_out='predictions/' + args.fine_tune_mode + '-cfimdb-test-out.csv',
     enable_lora=args.enable_lora,
-    lora_params=dict(r=4, alpha=1.0, target_modules=['query', 'value']),
+    lora_params=dict(r=args.lora_r, alpha=args.lora_alpha, target_modules=args.lora_target_modules),
+    enable_reft=args.enable_reft,
+    reft_params=dict(p=args.reft_p, s=args.reft_s, mode=args.reft_mode, rank=args.reft_rank),
   )
 
   train(config)
