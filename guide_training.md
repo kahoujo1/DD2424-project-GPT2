@@ -38,4 +38,7 @@ python sonnet_generation.py --lr 1e-3 --epochs 64 --use_gpu --model_size gpt2 --
 python paraphrase_detection.py --lr 1e-5 --epochs 8 --use_gpu --model_size gpt2
 
 python paraphrase_detection.py --lr 1e-3 --epochs 64 --use_gpu --model_size gpt2 --enable_lora
+
+python paraphrase_detection.py --lr 1e-3 --epochs 64 --use_gpu --model_size gpt2 --enable_reft --reft_mode LoraReft
+python paraphrase_detection.py --lr 1e-3 --epochs 64 --use_gpu --model_size gpt2 --enable_reft --reft_mode DiReFT
 ```

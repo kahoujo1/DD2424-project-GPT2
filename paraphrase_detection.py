@@ -52,8 +52,8 @@ class ParaphraseGPT(nn.Module):
   def __init__(self, args):
     super().__init__()
     self.gpt = GPT2ModelLora.from_pretrained(model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads,
-                                              enable_lora=args.enable_lora, lora_params=args.lora_params[0],
-                                              enable_reft=args.enable_reft, reft_params=args.reft_params[0])
+                                              enable_lora=args.enable_lora, lora_params=args.lora_params,
+                                              enable_reft=args.enable_reft, reft_params=args.reft_params)
     self.paraphrase_detection_head = nn.Linear(args.d, 2)  # Paraphrase detection has two outputs: 1 (yes) or 0 (no).
 
     self.enable_lora = args.enable_lora
