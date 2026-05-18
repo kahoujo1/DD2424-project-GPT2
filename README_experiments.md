@@ -210,7 +210,7 @@ Default LoRA settings are:
 ```text
 lora_alpha          = 1.0
 lora_target_modules = query value
-lora_ranks          = 2 4 8 16
+lora_ranks          = 2 4 8 16 32
 ```
 
 For the normal comparison experiment, LoRA uses rank 4 by default:
@@ -302,8 +302,41 @@ python3 run_experiments.py --experiment lora_rank
 the default ranks are:
 
 ```text
-2 4 8 16
+2 4 8 16 32
 ```
+
+## LoRA target-module ablation
+
+An experiment group `lora_targets` runs LoRA while varying which attention linear layers are replaced by LoRA adapters. It uses a fixed rank (the first element of `--lora_ranks`) so you can focus on which modules matter.
+
+Default target combinations included in the experiments:
+- Singles: `query`, `key`, `value`, `dense` (the attention output projection)
+- Pairs: `query,value` and `key,value`
+- Full attention: `query,key,value`
+
+Recommended minimal subset if compute is limited:
+- `query`, `value`, `query,value`, `query,key,value`, `dense`
+
+How it works:
+- Run `--experiment lora_targets` and the launcher will generate one experiment per target combination per task.
+- The fixed rank used is taken from the first value in `--lora_ranks` (for example `--lora_ranks 4` will run all target combos with rank 4).
+
+Examples:
+
+Dry-run sentiment-only with rank 4:
+```bash
+python3 run_experiments.py --experiment lora_targets --lora_ranks 4 --task sentiment --dry-run
+```
+
+Run all tasks with rank 4 (real runs):
+```bash
+python3 run_experiments.py --experiment lora_targets --lora_ranks 4
+```
+
+Notes:
+- The launcher passes the target list to the task scripts via `--lora_target_modules` so task scripts must accept that argument (the project already supports this flag).
+- Use `--task` to restrict to `sentiment`, `paraphrase`, or `sonnet`.
+
 
 For limited-data experiments:
 
