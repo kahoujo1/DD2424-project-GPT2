@@ -217,7 +217,7 @@ def get_args():
     default=["query", "value"],
     help="Target modules for LoRA"
   )
-  parser.add_argument("--lora_r", type=float, default=4)
+  parser.add_argument("--lora_r", type=int, default=4)
   parser.add_argument("--lora_alpha", type=float, default=1.0)
 
   ## Added Reft params
@@ -226,6 +226,7 @@ def get_args():
   parser.add_argument("--reft_s", type=int, default=2, help="Number of suffix tokens to apply ReFT to")
   parser.add_argument("--reft_mode", type=str, choices=['LoraReft', 'DiReFT'], default='LoraReft', help="Whether to use LoReFT or DiReFT")
   parser.add_argument("--reft_rank", type=int, default=4, help="Rank for the ReFT intervention")
+  parser.add_argument("--train_fraction", type=float, default=1.0)
 
   args = parser.parse_args()
 
