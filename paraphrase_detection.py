@@ -52,7 +52,8 @@ class ParaphraseGPT(nn.Module):
   def __init__(self, args):
     super().__init__()
     self.gpt = GPT2ModelLora.from_pretrained(model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads,
-                                              enable_lora=args.enable_lora, lora_params=args.lora_params)
+                                              enable_lora=args.enable_lora, lora_params=args.lora_params,
+                                              enable_reft=args.enable_reft, reft_params=args.reft_params)
     self.paraphrase_detection_head = nn.Linear(args.d, 2)  # Paraphrase detection has two outputs: 1 (yes) or 0 (no).
 
     self.enable_lora = args.enable_lora
@@ -61,7 +62,7 @@ class ParaphraseGPT(nn.Module):
     for name, param in self.gpt.named_parameters():
 
       if self.enable_lora:
-        if 'lora' in name:
+        if 'lora' in name or 'reft' in name:
           param.requires_grad = True 
         else:
           param.requires_grad = False
@@ -219,9 +220,12 @@ def get_args():
   parser.add_argument("--lora_r", type=int, default=4)
   parser.add_argument("--lora_alpha", type=float, default=1.0)
 
-
-  # So run_experiments.py doesn't crash
-  parser.add_argument("--enable_reft", action="store_true")
+  ## Added Reft params
+  parser.add_argument("--enable_reft", action='store_true')
+  parser.add_argument("--reft_p", type=int, default=2, help="Number of prefix tokens to apply ReFT to")
+  parser.add_argument("--reft_s", type=int, default=2, help="Number of suffix tokens to apply ReFT to")
+  parser.add_argument("--reft_mode", type=str, choices=['LoraReft', 'DiReFT'], default='LoraReft', help="Whether to use LoReFT or DiReFT")
+  parser.add_argument("--reft_rank", type=int, default=4, help="Rank for the ReFT intervention")
   parser.add_argument("--train_fraction", type=float, default=1.0)
 
   args = parser.parse_args()
@@ -247,6 +251,7 @@ def add_arguments(args):
     raise Exception(f'{args.model_size} is not supported.')
 
   args.lora_params=dict(r=args.lora_r, alpha=args.lora_alpha, target_modules=args.lora_target_modules)
+  args.reft_params=dict(p=args.reft_p, s=args.reft_s, mode=args.reft_mode, rank=args.reft_rank)
 
   return args
 
