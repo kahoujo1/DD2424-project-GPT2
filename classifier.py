@@ -395,7 +395,6 @@ def get_args():
   parser.add_argument("--reft_rank", type=int, default=4, help="Rank for the ReFT intervention")
 
   # So run_experiments.py doesn't crash
-  parser.add_argument("--enable_reft", action="store_true")
   parser.add_argument("--train_fraction", type=float, default=1.0)
 
 
