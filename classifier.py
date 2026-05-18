@@ -395,7 +395,6 @@ def get_args():
   parser.add_argument("--reft_rank", type=int, default=4, help="Rank for the ReFT intervention")
 
   # So run_experiments.py doesn't crash
-  parser.add_argument("--enable_reft", action="store_true")
   parser.add_argument("--train_fraction", type=float, default=1.0)
 
 
@@ -448,6 +447,8 @@ if __name__ == "__main__":
     test_out='predictions/' + args.fine_tune_mode + '-cfimdb-test-out.csv',
     enable_lora=args.enable_lora,
     lora_params=dict(r=args.lora_r, alpha=args.lora_alpha, target_modules=args.lora_target_modules),
+    enable_reft=args.enable_reft,
+    reft_params=dict(p=args.reft_p, s=args.reft_s, mode=args.reft_mode, rank=args.reft_rank),
   )
 
   train(config)

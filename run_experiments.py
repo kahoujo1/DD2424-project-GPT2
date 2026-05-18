@@ -512,6 +512,59 @@ def build_lora_rank_experiments(args: argparse.Namespace) -> List[Experiment]:
     return exps
 
 
+def build_lora_target_experiments(args: argparse.Namespace) -> List[Experiment]:
+    """
+    Builds experiments that ablate which attention modules are targeted by LoRA.
+    Uses a fixed rank (the first element of `args.lora_ranks` if present).
+    """
+    common = base_runtime_args(args)
+    exps = []
+
+    scripts = {
+        "sentiment": "classifier.py",
+        "paraphrase": "paraphrase_detection.py",
+        "sonnet": "sonnet_generation.py",
+    }
+
+    # fixed rank to use for target ablation (use first provided rank or default 4)
+    rank = args.lora_ranks[0] if args.lora_ranks else 4
+
+    target_combinations = [
+        ["query"],
+        ["key"],
+        ["value"],
+        ["dense"],
+        ["query", "value"],
+        ["key", "value"],
+        ["query", "key", "value"],
+    ]
+
+    for task, script in scripts.items():
+        for targets in target_combinations:
+            extra = lora_flags(rank, args.lora_alpha, targets)
+
+            if task == "sentiment":
+                extra = ["--fine-tune-mode", "last-linear-layer"] + extra
+
+            if task == "sonnet":
+                extra += ["--temperature", str(args.temperature), "--top_p", str(args.top_p)]
+
+            name = f"{task}_lora_targets_{'_'.join(targets)}"
+
+            exps.append(
+                Experiment(
+                    name=name,
+                    group="lora_target",
+                    task=task,
+                    method=f"lora_targets_{'_'.join(targets)}",
+                    script=script,
+                    args=common + extra,
+                )
+            )
+
+    return exps
+
+
 def build_limited_data_experiments(args: argparse.Namespace) -> List[Experiment]:
     common = base_runtime_args(args)
     exps = []
@@ -673,6 +726,9 @@ def build_experiments(args: argparse.Namespace) -> List[Experiment]:
     if args.experiment in ["lora_rank", "all"]:
         exps.extend(build_lora_rank_experiments(args))
 
+    if args.experiment in ["lora_targets", "all"]:
+        exps.extend(build_lora_target_experiments(args))
+
     if args.experiment in ["limited_data", "all"]:
         exps.extend(build_limited_data_experiments(args))
 
@@ -752,7 +808,7 @@ def get_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--experiment",
-        choices=["comparison", "lora_rank", "limited_data", "sonnet_decoding", "all"],
+        choices=["comparison", "lora_rank", "lora_targets", "limited_data", "sonnet_decoding", "all"],
         default="comparison",
     )
 
@@ -784,7 +840,7 @@ def get_args() -> argparse.Namespace:
         default=["query", "value"],
     )
 
-    parser.add_argument("--lora_ranks", type=int, nargs="+", default=[2, 4, 8, 16])
+    parser.add_argument("--lora_ranks", type=int, nargs="+", default=[2, 4, 8, 16, 32])
     parser.add_argument("--train_fractions", type=float, nargs="+", default=[0.10, 0.25, 0.50, 1.00])
 
     parser.add_argument("--temperature_sweep", type=float, nargs="+", default=[0.7, 1.0, 1.2])
